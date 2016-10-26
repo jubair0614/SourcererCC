@@ -6,6 +6,7 @@ import os
 import collections
 from lockfile import LockFile
 import tarfile
+import zipfile
 import sys
 import hashlib
 import datetime as dt
@@ -268,6 +269,64 @@ def process_tgz_ball(process_num, tar_file, proj_id, proj_path, proj_url, base_f
         return
 
     return (zip_time, file_time, string_time, tokens_time, write_time, hash_time, regex_time)
+
+def process_zip_ball(process_num, zip_file, proj_id, proj_path, proj_url, base_file_id, 
+	FILE_tokens_file, FILE_bookkeeping_proj, FILE_stats_file, logging):
+    zip_time = file_time = string_time = tokens_time = hash_time = write_time = regex_time = 0
+
+    try:
+        with zipfile.ZipFile(zip_file,'r') as my_zip_file:
+
+            for f in my_zip_file.infolist():
+                file_path = f.filename
+
+                # Filter by the correct extension
+                if not os.path.splitext(f.filename)[1] in file_extensions:
+                    continue
+                
+                # This is very strange, but I did find some paths with newlines,
+                # so I am simply ignoring them
+                if '\n' in file_path:
+                    continue
+
+                file_id = process_num*MULTIPLIER + base_file_id + file_count
+
+                file_bytes=str(f.file_size)
+
+                z_time = dt.datetime.now();
+                try:
+                    myfile = my_zip_file.open(f.filename)
+                except:
+                    logging.error('Unable to open file (1) <'+proj_id+','+str(file_id)+','+os.path.join(tar_file,file_path)+
+                                  '> (process '+str(process_num)+')')
+                    break
+                zip_time += (dt.datetime.now() - z_time).microseconds
+
+                if myfile is None:
+                    logging.error('Unable to open file (2) <'+proj_id+','+str(file_id)+','+os.path.join(tar_file,file_path)+
+                                  '> (process '+str(process_num)+')')
+                    break
+
+                f_time = dt.datetime.now()
+                file_string = myfile.read()
+                file_time += (dt.datetime.now() - f_time).microseconds
+
+                times = process_file_contents(file_string, proj_id, file_id, zip_file, file_path, file_bytes,
+                                              proj_url, FILE_tokens_file, FILE_stats_file)
+                string_time += times[0]
+                tokens_time += times[1]
+                write_time += times[4]
+                hash_time += times[2]
+                regex_time += times[3]
+
+#                if (file_count % 50) == 0:
+#                    logging.info('Zip: %s Read: %s Separators: %s Tokens: %s Write: %s Hash: %s regex: %s', 
+#                                 zip_time, file_time, string_time, tokens_time, write_time, hash_time, regex_time)
+
+    except Exception as e:
+        logging.error('Unable to open tar on <'+proj_id+','+proj_path+'> (process '+str(process_num)+')')
+        logging.error(e)
+        return
 
 
 def process_one_project(process_num, proj_id, proj_path, base_file_id, 
